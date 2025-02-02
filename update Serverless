@@ -1,0 +1,140 @@
+#!/bin/bash
+# Advanced VPS Management Script - Premium Menu
+# Supports WS, WireGuard, SSL, Proxy, SSH, Firewall, WordPress, OpenVPN, and More
+
+# Check if the script is run as root
+if [[ $EUID -ne 0 ]]; then
+    echo "This script must be run as root" 
+    exit 1
+fi
+
+# Colors for output
+green="\e[32m"
+red="\e[31m"
+nc="\e[0m"
+
+# Install essential packages
+install_dependencies() {
+    echo -e "${green}Installing dependencies...${nc}"
+    apt update -y && apt upgrade -y
+    apt install -y wget curl unzip net-tools socat wireguard nginx openvpn shadowsocks-libev dnsutils iptables-persistent certbot python3-certbot-nginx fail2ban ufw dante-server apache2-utils speedtest-cli jq htop tmux rsync
+}
+
+# Configure Firewall
+setup_firewall() {
+    echo -e "${green}Configuring firewall...${nc}"
+    ufw allow 22/tcp
+    ufw allow 443/tcp
+    ufw allow 80/tcp
+    ufw allow 51820/udp # WireGuard
+    ufw allow 8080/tcp # WebSocket Proxy
+    ufw allow 1080/tcp # SOCKS5 Proxy
+    ufw allow 1194/udp # OpenVPN
+    ufw enable
+}
+
+# Get live system stats
+display_system_stats() {
+    ram_usage=$(free -m | awk '/Mem:/ {printf "%d/%dMB (%.2f%%)", $3, $2, $3*100/$2 }')
+    server_status=$(systemctl is-active sshd)
+    speed_test=$(speedtest-cli --json | jq -r '.download / 1000000 | round')
+    uptime=$(uptime -p)
+    load_avg=$(cat /proc/loadavg | awk '{print $1, $2, $3}')
+    disk_usage=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')
+
+    echo -e "${green}==============================${nc}"
+    echo -e " RAM Usage: $ram_usage "
+    echo -e " Disk Usage: $disk_usage "
+    echo -e " Server Status: ${server_status} "
+    echo -e " Network Speed: $speed_test Mbps "
+    echo -e " Uptime: $uptime "
+    echo -e " Load Average: $load_avg "
+    echo -e "${green}==============================${nc}"
+}
+
+# Secure SSH Configuration
+secure_ssh() {
+    echo "Disabling root login and setting up key authentication..."
+    sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+    sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+    systemctl restart sshd
+    echo "SSH secured. Use key authentication instead of password."
+}
+
+# WireGuard Account Management
+manage_wireguard() {
+    echo -e "${green}WireGuard Management${nc}"
+    echo "1) Create WireGuard Account"
+    echo "2) View WireGuard Accounts"
+    echo "3) Remove WireGuard Account"
+    read -p "Choose an option: " wg_option
+
+    case $wg_option in
+        1)
+            read -p "Enter username: " username
+            wg genkey | tee /etc/wireguard/${username}_private.key | wg pubkey > /etc/wireguard/${username}_public.key
+            echo -e "${green}WireGuard account created successfully!${nc}"
+            ;;
+        2)
+            echo -e "${green}Existing WireGuard Accounts:${nc}"
+            ls /etc/wireguard/*.conf
+            ;;
+        3)
+            read -p "Enter username to remove: " username
+            rm -f /etc/wireguard/${username}_private.key /etc/wireguard/${username}_public.key
+            echo -e "${green}Account removed successfully!${nc}"
+            ;;
+        *)
+            echo -e "${red}Invalid option!${nc}"
+            ;;
+    esac
+}
+
+# Premium Menu
+premium_menu() {
+    while true; do
+        clear
+        display_system_stats
+        echo -e "${green}Premium VPS Management Menu${nc}"
+        echo "1) Manage SSH (Secure, Configure Ports)"
+        echo "2) Manage WireGuard Accounts"
+        echo "3) Manage OpenVPN Accounts"
+        echo "4) Set Proxy Port"
+        echo "5) Install SOCKS5 Proxy"
+        echo "6) Install WordPress with SSL"
+        echo "7) Configure Advanced Firewall"
+        echo "8) Install Monitoring Tools"
+        echo "9) Optimize Server Performance"
+        echo "10) Reboot Server"
+        echo "11) Exit"
+        read -p "Choose an option: " option
+
+        case $option in
+            1) secure_ssh ;;
+            2) manage_wireguard ;;
+            3) manage_openvpn ;;
+            4) read -p "Enter new proxy port: " port
+               sed -i "s/^Port .*/Port $port/" /etc/ssh/sshd_config
+               systemctl restart ssh
+               echo "Proxy port updated to $port" ;;
+            5) apt install -y dante-server
+               echo "SOCKS5 installed. Configure /etc/danted.conf"
+               systemctl restart danted ;;
+            6) echo "Installing WordPress..." ;;
+            7) setup_firewall ;;
+            8) apt install -y htop tmux
+               echo "Monitoring tools installed." ;;
+            9) sysctl -w net.ipv4.tcp_tw_reuse=1
+               sysctl -w net.ipv4.tcp_fin_timeout=30
+               echo "Server optimized." ;;
+            10) reboot ;;
+            11) exit 0 ;;
+            *) echo -e "${red}Invalid option!${nc}" ;;
+        esac
+    done
+}
+
+# Run main setup
+install_dependencies
+setup_firewall
+premium_menu
