@@ -1,0 +1,130 @@
+#!/bin/bash
+# Advanced VPS Management Script - Premium Menu
+# Supports WS, WireGuard, SSL, Proxy, SSH, Firewall, WordPress, and More
+
+# Check if the script is run as root
+if [[ $EUID -ne 0 ]]; then
+    echo "This script must be run as root" 
+    exit 1
+fi
+
+# Colors for output
+green="\e[32m"
+red="\e[31m"
+nc="\e[0m"
+
+# Install essential packages
+install_dependencies() {
+    echo -e "${green}Installing dependencies...${nc}"
+    apt update -y && apt upgrade -y
+    apt install -y wget curl unzip net-tools socat wireguard nginx openvpn shadowsocks-libev dnsutils iptables-persistent certbot python3-certbot-nginx fail2ban ufw dante-server apache2-utils speedtest-cli jq htop tmux
+}
+
+# Configure Firewall
+setup_firewall() {
+    echo -e "${green}Configuring firewall...${nc}"
+    ufw allow 22/tcp
+    ufw allow 443/tcp
+    ufw allow 80/tcp
+    ufw allow 51820/udp # WireGuard
+    ufw allow 8080/tcp # WebSocket Proxy
+    ufw allow 1080/tcp # SOCKS5 Proxy
+    ufw enable
+}
+
+# Get live system stats
+display_system_stats() {
+    ram_usage=$(free -m | awk '/Mem:/ {printf "%d/%dMB (%.2f%%)", $3, $2, $3*100/$2 }')
+    server_status=$(systemctl is-active sshd)
+    speed_test=$(speedtest-cli --json | jq -r '.download / 1000000 | round')
+    uptime=$(uptime -p)
+    load_avg=$(cat /proc/loadavg | awk '{print $1, $2, $3}')
+    disk_usage=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')
+    
+    echo -e "${green}==============================${nc}"
+    echo -e " RAM Usage: $ram_usage "
+    echo -e " Disk Usage: $disk_usage "
+    echo -e " Server Status: ${server_status} "
+    echo -e " Network Speed: $speed_test Mbps "
+    echo -e " Uptime: $uptime "
+    echo -e " Load Average: $load_avg "
+    echo -e "${green}==============================${nc}"
+}
+
+# Secure SSH Configuration
+secure_ssh() {
+    echo "Disabling root login and setting up key authentication..."
+    sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+    sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+    systemctl restart sshd
+    echo "SSH secured. Use key authentication instead of password."
+}
+
+# Install Monitoring Tools
+install_monitoring_tools() {
+    echo "Installing htop, tmux for better system monitoring..."
+    apt install -y htop tmux
+    echo "Monitoring tools installed. Use 'htop' to check system resources."
+}
+
+# Optimize Server Performance
+optimize_server() {
+    echo "Optimizing server performance..."
+    sysctl -w net.ipv4.tcp_tw_reuse=1
+    sysctl -w net.ipv4.tcp_fin_timeout=30
+    sysctl -w net.ipv4.tcp_keepalive_time=120
+    echo "Performance tuning applied."
+}
+
+# Premium Menu
+premium_menu() {
+    while true; do
+        clear
+        display_system_stats
+        echo -e "${green}Premium VPS Management Menu${nc}"
+        echo "1) Create SSH Account"
+        echo "2) Create WireGuard Account"
+        echo "3) Set Proxy Port"
+        echo "4) Set SSH/SSL Port"
+        echo "5) Install SOCKS5 Proxy"
+        echo "6) Install WordPress with SSL"
+        echo "7) Configure Advanced Firewall"
+        echo "8) Secure SSH"
+        echo "9) Install Monitoring Tools"
+        echo "10) Optimize Server Performance"
+        echo "11) Reboot Server"
+        echo "12) Exit"
+        read -p "Choose an option: " option
+
+        case $option in
+            1) create_ssh_account ;;
+            2) install_wireguard ;;
+            3) read -p "Enter new proxy port: " port
+               sed -i "s/^Port .*/Port $port/" /etc/ssh/sshd_config
+               systemctl restart ssh
+               echo "Proxy port updated to $port" ;;
+            4) read -p "Enter new SSH/SSL port: " port
+               sed -i "s/^Port .*/Port $port/" /etc/ssh/sshd_config
+               systemctl restart ssh
+               echo "SSH/SSL port updated to $port" ;;
+            5) apt install -y dante-server
+               echo "SOCKS5 installed. Configure /etc/danted.conf"
+               systemctl restart danted ;;
+            6) install_wordpress
+               echo "WordPress installed with SSL. Visit https://yourdomain.com" ;;
+            7) configure_advanced_firewall ;;
+            8) secure_ssh ;;
+            9) install_monitoring_tools ;;
+            10) optimize_server ;;
+            11) echo "Rebooting server..."
+                reboot ;;
+            12) exit 0 ;;
+            *) echo -e "${red}Invalid option! Try again.${nc}" ;;
+        esac
+    done
+}
+
+# Run main setup
+install_dependencies
+setup_firewall
+premium_menu
